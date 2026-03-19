@@ -25,22 +25,24 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [liveBounds, setLiveBounds] = useState(null);
   const mapContainerRef = useRef(null);
 
   const t = useCallback((key) => translations[lang]?.[key] || key, [lang]);
 
-  // Calculate live scale preview
+  // Stable callback to receive real-time bounds from the map
+  const handleBoundsChange = useCallback((bounds) => {
+    setLiveBounds(bounds);
+  }, []);
+
+  // Calculate live scale from the actual visible map bounds
   const liveScale = useMemo(() => {
-    const boundsStr = selectedZone.bounds;
-    const boundsObj = {
-      getNorth: () => Math.max(boundsStr[0][0], boundsStr[1][0]),
-      getSouth: () => Math.min(boundsStr[0][0], boundsStr[1][0]),
-      getEast: () => Math.max(boundsStr[0][1], boundsStr[1][1]),
-      getWest: () => Math.min(boundsStr[0][1], boundsStr[1][1]),
-    };
-    // Estimate with a typical map width of ~920px (viewport minus sidebar)
-    return calculateScale(boundsObj, 920);
-  }, [selectedZone]);
+    if (!liveBounds) return 0;
+    // liveBounds is a real Leaflet LatLngBounds with getNorth/getSouth/getEast/getWest
+    const mapEl = mapContainerRef.current;
+    const pixelWidth = mapEl ? mapEl.clientWidth : 920;
+    return calculateScale(liveBounds, pixelWidth);
+  }, [liveBounds]);
 
   const getZoneName = (zone) => zone.nombre || t(zone.nameKey);
   const getZoneDesc = (zone) => zone.desc || t(zone.descKey);
@@ -125,14 +127,17 @@ function App() {
 
       const imgData = finalCanvas.toDataURL('image/png');
 
-      const boundsStr = selectedZone.bounds;
-      const boundsObj = {
-        getNorth: () => Math.max(boundsStr[0][0], boundsStr[1][0]),
-        getSouth: () => Math.min(boundsStr[0][0], boundsStr[1][0]),
-        getEast: () => Math.max(boundsStr[0][1], boundsStr[1][1]),
-        getWest: () => Math.min(boundsStr[0][1], boundsStr[1][1]),
-      };
-      const scale = calculateScale(boundsObj, finalCanvas.width);
+      // Use the real visible bounds for accurate export scale
+      const exportBounds = liveBounds || (() => {
+        const boundsStr = selectedZone.bounds;
+        return {
+          getNorth: () => Math.max(boundsStr[0][0], boundsStr[1][0]),
+          getSouth: () => Math.min(boundsStr[0][0], boundsStr[1][0]),
+          getEast: () => Math.max(boundsStr[0][1], boundsStr[1][1]),
+          getWest: () => Math.min(boundsStr[0][1], boundsStr[1][1]),
+        };
+      })();
+      const scale = calculateScale(exportBounds, finalCanvas.width);
 
       let safeName = getZoneName(selectedZone).replace(/[^a-z0-9]/gi, '_').toLowerCase();
       if (!safeName) safeName = 'custom_map';
@@ -289,7 +294,7 @@ function App() {
 
       {/* Map Preview Area */}
       <div className="flex-1 relative z-10" style={{ backgroundColor: activeStyle.bg }}>
-        <MapEditor bounds={selectedZone.bounds} mapRef={mapContainerRef} activeStyle={activeStyle} />
+        <MapEditor bounds={selectedZone.bounds} mapRef={mapContainerRef} activeStyle={activeStyle} onBoundsChange={handleBoundsChange} />
 
         {/* Radar ring overlay for Aegis/Night styles */}
         <div className={`absolute inset-0 pointer-events-none border-[1px] z-[400] ${

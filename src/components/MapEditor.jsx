@@ -13,7 +13,23 @@ function BoundsUpdater({ bounds }) {
   return null;
 }
 
-export default function MapEditor({ bounds, mapRef, activeStyle }) {
+// Reports the real visible bounds back to the parent on every zoom/pan
+function BoundsReporter({ onBoundsChange }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!onBoundsChange) return;
+    // Report initial bounds once the map is ready
+    const reportBounds = () => onBoundsChange(map.getBounds());
+    map.whenReady(reportBounds);
+    map.on('moveend', reportBounds);
+    return () => {
+      map.off('moveend', reportBounds);
+    };
+  }, [map, onBoundsChange]);
+  return null;
+}
+
+export default function MapEditor({ bounds, mapRef, activeStyle, onBoundsChange }) {
 
   // We apply the CSS filter on the tile-layer container div,
   // NOT on the MapContainer. This way the filter is "inside" the
@@ -32,6 +48,7 @@ export default function MapEditor({ bounds, mapRef, activeStyle }) {
         {/* Wrap TileLayer in a div that carries the filter */}
         <TileLayerFiltered activeStyle={activeStyle} />
         {bounds && <BoundsUpdater bounds={bounds} />}
+        <BoundsReporter onBoundsChange={onBoundsChange} />
       </MapContainer>
     </div>
   );
